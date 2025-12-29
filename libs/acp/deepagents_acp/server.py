@@ -187,10 +187,6 @@ class DeepagentsACP(Agent):
             if tool_call_id is None:
                 continue
 
-            # Skip todo tool calls as they're handled separately
-            if tool_name == "todo":
-                raise NotImplementedError("TODO tool call handling not implemented yet")
-
             # Send tool call progress update showing the tool is running
             await self._connection.sessionUpdate(
                 SessionNotification(
@@ -356,6 +352,15 @@ class DeepagentsACP(Agent):
                         kind="allow_once",
                     )
                 )
+            if "edit" in allowed_decisions:
+                # Add edit option with editable parameters
+                options.append(
+                    PermissionOption(
+                        optionId="edit-and-allow",
+                        name="Edit and allow",
+                        kind="edit_and_allow",
+                    )
+                )
             if "reject" in allowed_decisions:
                 options.append(
                     PermissionOption(
@@ -392,25 +397,25 @@ class DeepagentsACP(Agent):
             if isinstance(outcome, AllowedOutcome):
                 option_id = outcome.optionId
                 if option_id == "allow-once":
-                    # Check if this was actually an edit option
-                    selected_option = next(
-                        (opt for opt in options if opt.optionId == option_id), None
-                    )
-                    if selected_option and selected_option.field_meta:
-                        # This is an edit - for now, just approve
-                        # TODO: Implement actual edit functionality
-                        decisions.append({"type": "approve"})
-                    else:
-                        decisions.append({"type": "approve"})
-                elif option_id == "edit":
-                    # Edit option - for now, just approve
-                    # TODO: Implement actual edit functionality to collect edited args
                     decisions.append({"type": "approve"})
+                elif option_id == "edit-and-allow":
+                    # Edit option - use edited arguments if provided
+                    # The edited args would come from outcome.editedInput if available
+                    edited_args = getattr(outcome, "editedInput", None)
+                    if edited_args:
+                        # Use the edited arguments instead of original
+                        decisions.append({
+                            "type": "edit",
+                            "args": edited_args,
+                        })
+                    else:
+                        # No edits provided, just approve with original args
+                        decisions.append({"type": "approve"})
             elif isinstance(outcome, DeniedOutcome):
                 decisions.append(
                     {
                         "type": "reject",
-                        "message": "Action rejected by user",
+                        "message": outcome.message if hasattr(outcome, "message") else "Action rejected by user",
                     }
                 )
 
@@ -554,16 +559,39 @@ class DeepagentsACP(Agent):
         pass
 
     async def cancel(self, params: CancelNotification) -> None:
-        """Cancel a running session."""
-        # TODO: Implement cancellation logic
-        pass
+        """Cancel a running session.
+        
+        Note: LangGraph doesn't support cancelling in-progress streams directly.
+        This implementation marks the session for cleanup but cannot interrupt
+        actively running tool calls or model invocations.
+        """
+        session_id = params.sessionId
+        # Remove the session from our tracking to prevent further operations
+        if session_id in self._sessions:
+            del self._sessions[session_id]
+        # Clean up any tracked tool calls for this session
+        # Note: We can't easily map tool_call_ids back to sessions without
+        # additional tracking, so we'll just let them naturally expire
 
     async def loadSession(
         self,
         params: LoadSessionRequest,
     ) -> LoadSessionResponse | None:
-        """Load an existing session (optional)."""
-        # Not implemented yet - would need to serialize/deserialize session state
+        """Load an existing session.
+        
+        Note: This implementation provides basic session loading by checking if
+        a session exists. Full persistence would require serializing the LangGraph
+        checkpointer state, which is beyond the scope of basic ACP integration.
+        """
+        session_id = params.sessionId
+        
+        # Check if session exists in our tracking
+        if session_id in self._sessions:
+            # Session exists and can be resumed
+            return LoadSessionResponse(sessionId=session_id)
+        
+        # Session not found - could implement persistence here
+        # For now, return None to indicate session cannot be loaded
         return None
 
     async def setSessionMode(
