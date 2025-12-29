@@ -396,9 +396,9 @@ class DeepagentsACP(Agent):
                 decisions.append(
                     {
                         "type": "reject",
-                        "message": outcome.message
-                        if hasattr(outcome, "message")
-                        else "Action rejected by user",
+                        "message": getattr(
+                            outcome, "message", "Action rejected by user"
+                        ),
                     }
                 )
 
