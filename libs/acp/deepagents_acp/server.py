@@ -39,7 +39,7 @@ from acp.schema import (
     RequestPermissionRequest,
     AllowedOutcome,
     DeniedOutcome,
-    ToolCall as ACPToolCall,
+    ToolCallUpdate,
 )
 from deepagents import create_deep_agent
 from langchain_anthropic import ChatAnthropic
@@ -78,8 +78,8 @@ class DeepagentsACP(Agent):
     ) -> InitializeResponse:
         """Initialize the agent and return capabilities."""
         return InitializeResponse(
-            protocolVersion=PROTOCOL_VERSION,
-            agentInfo=Implementation(
+            protocol_version=PROTOCOL_VERSION,
+            agent_info=Implementation(
                 name="DeepAgents ACP Server",
                 version="0.1.0",
                 title="DeepAgents ACP Server",
@@ -98,7 +98,7 @@ class DeepagentsACP(Agent):
             "thread_id": str(uuid.uuid4()),
         }
 
-        return NewSessionResponse(sessionId=session_id)
+        return NewSessionResponse(session_id=session_id)
 
     async def _handle_ai_message_chunk(
         self,
@@ -133,9 +133,9 @@ class DeepagentsACP(Agent):
                     SessionNotification(
                         update=AgentMessageChunk(
                             content=TextContentBlock(text=text, type="text"),
-                            sessionUpdate="agent_message_chunk",
+                            session_update="agent_message_chunk",
                         ),
-                        sessionId=params.sessionId,
+                        session_id=params.session_id,
                     )
                 )
             elif block_type == "reasoning":
@@ -148,9 +148,9 @@ class DeepagentsACP(Agent):
                     SessionNotification(
                         update=AgentThoughtChunk(
                             content=TextContentBlock(text=reasoning, type="text"),
-                            sessionUpdate="agent_thought_chunk",
+                            session_update="agent_thought_chunk",
                         ),
-                        sessionId=params.sessionId,
+                        session_id=params.session_id,
                     )
                 )
 
@@ -191,13 +191,13 @@ class DeepagentsACP(Agent):
             await self._connection.sessionUpdate(
                 SessionNotification(
                     update=ToolCallProgress(
-                        sessionUpdate="tool_call_update",
-                        toolCallId=tool_call_id,
+                        session_update="tool_call_update",
+                        tool_call_id=tool_call_id,
                         title=tool_name,
-                        rawInput=tool_args,
+                        raw_input=tool_args,
                         status="pending",
                     ),
-                    sessionId=params.sessionId,
+                    session_id=params.session_id,
                 )
             )
 
@@ -244,14 +244,14 @@ class DeepagentsACP(Agent):
         await self._connection.sessionUpdate(
             SessionNotification(
                 update=ToolCallProgress(
-                    sessionUpdate="tool_call_update",
-                    toolCallId=message.tool_call_id,
+                    session_update="tool_call_update",
+                    tool_call_id=message.tool_call_id,
                     title=tool_call["name"],
                     content=content_blocks,
-                    rawOutput=message.content,
+                    raw_output=message.content,
                     status=status,
                 ),
-                sessionId=params.sessionId,
+                session_id=params.session_id,
             )
         )
 
@@ -293,10 +293,10 @@ class DeepagentsACP(Agent):
         await self._connection.sessionUpdate(
             SessionNotification(
                 update=AgentPlanUpdate(
-                    sessionUpdate="plan",
+                    session_update="plan",
                     entries=entries,
                 ),
-                sessionId=params.sessionId,
+                session_id=params.session_id,
             )
         )
 
@@ -347,46 +347,39 @@ class DeepagentsACP(Agent):
             if "approve" in allowed_decisions:
                 options.append(
                     PermissionOption(
-                        optionId="allow-once",
+                        option_id="allow-once",
                         name="Allow once",
                         kind="allow_once",
-                    )
-                )
-            if "edit" in allowed_decisions:
-                # Add edit option with editable parameters
-                options.append(
-                    PermissionOption(
-                        optionId="edit-and-allow",
-                        name="Edit and allow",
-                        kind="edit_and_allow",
                     )
                 )
             if "reject" in allowed_decisions:
                 options.append(
                     PermissionOption(
-                        optionId="reject-once",
+                        option_id="reject-once",
                         name="Reject",
                         kind="reject_once",
                     )
                 )
+            # Note: ACP protocol doesn't currently support edit functionality
+            # If "edit" is in allowed_decisions, we only offer allow/reject for now
             # Generate a tool call ID for this permission request
             # We need to find the corresponding tool call from the stored calls
             # For now, use a generated ID
             tool_call_id = f"perm_{uuid.uuid4().hex[:8]}"
 
-            # Create ACP ToolCall object for the permission request
-            acp_tool_call = ACPToolCall(
-                toolCallId=tool_call_id,
+            # Create ACP ToolCallUpdate object for the permission request
+            acp_tool_call = ToolCallUpdate(
+                tool_call_id=tool_call_id,
                 title=tool_name,
-                rawInput=tool_args,
+                raw_input=tool_args,
                 status="pending",
             )
 
             # Send permission request to client
             response = await self._connection.requestPermission(
                 RequestPermissionRequest(
-                    sessionId=params.sessionId,
-                    toolCall=acp_tool_call,
+                    session_id=params.session_id,
+                    tool_call=acp_tool_call,
                     options=options,
                 )
             )
@@ -395,22 +388,10 @@ class DeepagentsACP(Agent):
             outcome = response.outcome
 
             if isinstance(outcome, AllowedOutcome):
-                option_id = outcome.optionId
+                option_id = outcome.option_id
                 if option_id == "allow-once":
                     decisions.append({"type": "approve"})
-                elif option_id == "edit-and-allow":
-                    # Edit option - use edited arguments if provided
-                    # The edited args would come from outcome.editedInput if available
-                    edited_args = getattr(outcome, "editedInput", None)
-                    if edited_args:
-                        # Use the edited arguments instead of original
-                        decisions.append({
-                            "type": "edit",
-                            "args": edited_args,
-                        })
-                    else:
-                        # No edits provided, just approve with original args
-                        decisions.append({"type": "approve"})
+                # Other option kinds would be handled here if supported
             elif isinstance(outcome, DeniedOutcome):
                 decisions.append(
                     {
@@ -502,7 +483,7 @@ class DeepagentsACP(Agent):
         params: PromptRequest,
     ) -> PromptResponse:
         """Handle a user prompt and stream responses."""
-        session_id = params.sessionId
+        session_id = params.session_id
         session = self._sessions.get(session_id)
 
         # Extract text from prompt content blocks
@@ -565,7 +546,7 @@ class DeepagentsACP(Agent):
         This implementation marks the session for cleanup but cannot interrupt
         actively running tool calls or model invocations.
         """
-        session_id = params.sessionId
+        session_id = params.session_id
         # Remove the session from our tracking to prevent further operations
         if session_id in self._sessions:
             del self._sessions[session_id]
@@ -583,12 +564,12 @@ class DeepagentsACP(Agent):
         a session exists. Full persistence would require serializing the LangGraph
         checkpointer state, which is beyond the scope of basic ACP integration.
         """
-        session_id = params.sessionId
+        session_id = params.session_id
         
         # Check if session exists in our tracking
         if session_id in self._sessions:
             # Session exists and can be resumed
-            return LoadSessionResponse(sessionId=session_id)
+            return LoadSessionResponse(session_id=session_id)
         
         # Session not found - could implement persistence here
         # For now, return None to indicate session cannot be loaded

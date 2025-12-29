@@ -106,10 +106,10 @@ async def deepagents_acp_test_context(
     session_response = await deepagents_acp.newSession(
         NewSessionRequest(cwd="/tmp", mcpServers=[])
     )
-    session_id = session_response.sessionId
+    session_id = session_response.session_id
 
     # Update the prompt request with the session ID
-    prompt_request.sessionId = session_id
+    prompt_request.session_id = session_id
 
     # Call prompt
     await deepagents_acp.prompt(prompt_request)
@@ -139,7 +139,7 @@ class TestDeepAgentsACP:
             first_call = connection.calls[0].model_dump()
             assert first_call == {
                 "field_meta": None,
-                "sessionId": IsUUID,
+                "session_id": IsUUID,
                 "update": {
                     "content": {
                         "annotations": None,
@@ -148,7 +148,7 @@ class TestDeepAgentsACP:
                         "type": "text",
                     },
                     "field_meta": None,
-                    "sessionUpdate": "agent_message_chunk",
+                    "session_update": "agent_message_chunk",
                 },
             }
 
@@ -197,7 +197,7 @@ class TestDeepAgentsACP:
             tool_call_updates = [
                 call.model_dump()
                 for call in connection.calls
-                if call.model_dump()["update"]["sessionUpdate"] == "tool_call_update"
+                if call.model_dump()["update"]["session_update"] == "tool_call_update"
             ]
 
             # Verify we have exactly 2 tool call updates
@@ -205,13 +205,13 @@ class TestDeepAgentsACP:
 
             # Verify tool call pending with full structure
             assert tool_call_updates[0]["update"] == {
-                "sessionUpdate": "tool_call_update",
+                "session_update": "tool_call_update",
                 "status": "pending",
-                "toolCallId": "call_123",
+                "tool_call_id": "call_123",
                 "title": "get_weather_tool",
-                "rawInput": {"location": "Paris, France"},
+                "raw_input": {"location": "Paris, France"},
                 "content": None,
-                "rawOutput": None,
+                "raw_output": None,
                 "kind": None,
                 "locations": None,
                 "field_meta": None,
@@ -219,14 +219,15 @@ class TestDeepAgentsACP:
 
             # Verify tool call completed with full structure
             assert tool_call_updates[1]["update"] == {
-                "sessionUpdate": "tool_call_update",
+                "session_update": "tool_call_update",
                 "status": "completed",
-                "toolCallId": "call_123",
+                "tool_call_id": "call_123",
                 "title": "get_weather_tool",
-                "rawInput": None,  # rawInput not included in completed status
+                "raw_input": None,  # raw_input not included in completed status
                 "content": [
                     {
                         "type": "content",
+                        "field_meta": None,
                         "content": {
                             "type": "text",
                             "text": "The weather in Paris, France is sunny and 72°F",
@@ -235,7 +236,7 @@ class TestDeepAgentsACP:
                         },
                     }
                 ],
-                "rawOutput": "The weather in Paris, France is sunny and 72°F",
+                "raw_output": "The weather in Paris, France is sunny and 72°F",
                 "kind": None,
                 "locations": None,
                 "field_meta": None,
@@ -245,11 +246,11 @@ class TestDeepAgentsACP:
             message_chunks = [
                 call.model_dump()
                 for call in connection.calls
-                if call.model_dump()["update"]["sessionUpdate"] == "agent_message_chunk"
+                if call.model_dump()["update"]["session_update"] == "agent_message_chunk"
             ]
             assert len(message_chunks) > 0
             for chunk in message_chunks:
-                assert chunk["update"]["sessionUpdate"] == "agent_message_chunk"
+                assert chunk["update"]["session_update"] == "agent_message_chunk"
                 assert chunk["update"]["content"]["type"] == "text"
 
 
@@ -285,8 +286,8 @@ async def test_todo_list_handling() -> None:
     session_response = await deepagents_acp.newSession(
         NewSessionRequest(cwd="/tmp", mcpServers=[])
     )
-    session_id = session_response.sessionId
-    prompt_request.sessionId = session_id
+    session_id = session_response.session_id
+    prompt_request.session_id = session_id
 
     # Manually inject a tools update with todos into the agent stream
     # Simulate the graph's behavior by patching the astream method
@@ -322,13 +323,13 @@ async def test_todo_list_handling() -> None:
     plan_updates = [
         call.model_dump()
         for call in connection.calls
-        if call.model_dump()["update"]["sessionUpdate"] == "plan"
+        if call.model_dump()["update"]["session_update"] == "plan"
     ]
 
     # Verify we got exactly one plan update with correct structure
     assert len(plan_updates) == 1
     assert plan_updates[0]["update"] == {
-        "sessionUpdate": "plan",
+        "session_update": "plan",
         "entries": [
             {
                 "content": "Buy fresh bananas",
@@ -479,8 +480,8 @@ async def test_human_in_the_loop_approval() -> None:
     session_response = await deepagents_acp.newSession(
         NewSessionRequest(cwd="/tmp", mcpServers=[])
     )
-    session_id = session_response.sessionId
-    prompt_request.sessionId = session_id
+    session_id = session_response.session_id
+    prompt_request.session_id = session_id
 
     # Call prompt - this should trigger HITL
     await deepagents_acp.prompt(prompt_request)
@@ -490,18 +491,18 @@ async def test_human_in_the_loop_approval() -> None:
     perm_request = connection.permission_requests[0]
 
     assert {
-        "sessionId": perm_request.sessionId,
+        "session_id": perm_request.session_id,
         "toolCall": {
-            "title": perm_request.toolCall.title,
-            "rawInput": perm_request.toolCall.rawInput,
-            "status": perm_request.toolCall.status,
+            "title": perm_request.tool_call.title,
+            "raw_input": perm_request.tool_call.raw_input,
+            "status": perm_request.tool_call.status,
         },
-        "option_ids": [opt.optionId for opt in perm_request.options],
+        "option_ids": [opt.option_id for opt in perm_request.options],
     } == {
-        "sessionId": session_id,
+        "session_id": session_id,
         "toolCall": {
             "title": "get_weather_tool",
-            "rawInput": {"location": "Tokyo, Japan"},
+            "raw_input": {"location": "Tokyo, Japan"},
             "status": "pending",
         },
         "option_ids": ["allow-once", "reject-once"],
@@ -511,18 +512,18 @@ async def test_human_in_the_loop_approval() -> None:
     tool_call_updates = [
         call.model_dump()
         for call in connection.calls
-        if call.model_dump()["update"]["sessionUpdate"] == "tool_call_update"
+        if call.model_dump()["update"]["session_update"] == "tool_call_update"
     ]
 
     assert len(tool_call_updates) == 2
     assert tool_call_updates[0]["update"] == {
-        "sessionUpdate": "tool_call_update",
+        "session_update": "tool_call_update",
         "status": "pending",
         "title": "get_weather_tool",
-        "toolCallId": "call_tokyo_123",
-        "rawInput": {"location": "Tokyo, Japan"},
+        "tool_call_id": "call_tokyo_123",
+        "raw_input": {"location": "Tokyo, Japan"},
         "content": None,
-        "rawOutput": None,
+        "raw_output": None,
         "kind": None,
         "locations": None,
         "field_meta": None,
@@ -530,15 +531,15 @@ async def test_human_in_the_loop_approval() -> None:
 
     # Check completed status
     completed_update = tool_call_updates[1]["update"]
-    assert completed_update["sessionUpdate"] == "tool_call_update"
+    assert completed_update["session_update"] == "tool_call_update"
     assert completed_update["status"] == "completed"
     assert completed_update["title"] == "get_weather_tool"
-    assert "Tokyo, Japan" in completed_update["rawOutput"]
+    assert "Tokyo, Japan" in completed_update["raw_output"]
 
     # Verify final AI message was streamed
     message_chunks = [
         call
         for call in connection.calls
-        if call.model_dump()["update"]["sessionUpdate"] == "agent_message_chunk"
+        if call.model_dump()["update"]["session_update"] == "agent_message_chunk"
     ]
     assert len(message_chunks) > 0
