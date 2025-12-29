@@ -396,7 +396,9 @@ class DeepagentsACP(Agent):
                 decisions.append(
                     {
                         "type": "reject",
-                        "message": outcome.message if hasattr(outcome, "message") else "Action rejected by user",
+                        "message": outcome.message
+                        if hasattr(outcome, "message")
+                        else "Action rejected by user",
                     }
                 )
 
@@ -541,7 +543,7 @@ class DeepagentsACP(Agent):
 
     async def cancel(self, params: CancelNotification) -> None:
         """Cancel a running session.
-        
+
         Note: LangGraph doesn't support cancelling in-progress streams directly.
         This implementation marks the session for cleanup but cannot interrupt
         actively running tool calls or model invocations.
@@ -559,18 +561,18 @@ class DeepagentsACP(Agent):
         params: LoadSessionRequest,
     ) -> LoadSessionResponse | None:
         """Load an existing session.
-        
+
         Note: This implementation provides basic session loading by checking if
         a session exists. Full persistence would require serializing the LangGraph
         checkpointer state, which is beyond the scope of basic ACP integration.
         """
         session_id = params.session_id
-        
+
         # Check if session exists in our tracking
         if session_id in self._sessions:
             # Session exists and can be resumed
             return LoadSessionResponse(session_id=session_id)
-        
+
         # Session not found - could implement persistence here
         # For now, return None to indicate session cannot be loaded
         return None

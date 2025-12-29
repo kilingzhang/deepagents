@@ -2,7 +2,7 @@
 
 import re
 from collections.abc import Callable, Iterator, Sequence
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from typing_extensions import override
 

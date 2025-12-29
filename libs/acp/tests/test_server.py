@@ -246,7 +246,8 @@ class TestDeepAgentsACP:
             message_chunks = [
                 call.model_dump()
                 for call in connection.calls
-                if call.model_dump()["update"]["session_update"] == "agent_message_chunk"
+                if call.model_dump()["update"]["session_update"]
+                == "agent_message_chunk"
             ]
             assert len(message_chunks) > 0
             for chunk in message_chunks:
